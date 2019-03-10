@@ -64,16 +64,46 @@ uint8_t MeshSensorCtrl::getVersion() {
 //  * * * * * * * * * * * * * * * * * * * * * * * */
 
 static String MeshSensorCtrl::getSensorLabels(String sensorName) {
-  if (sensorName == "accelerometer") return "Ax"+MeshOS::getIntraDataSplitter()+"Ay"+MeshOS::getIntraDataSplitter()+"Az";
-  else if (sensorName == "gyroscope") return  "Gx"+MeshOS::getIntraDataSplitter()+"Gy"+MeshOS::getIntraDataSplitter()+"Gz";
-  else if (sensorName == "humidity") return "H";
-  else if (sensorName == "light") return "L";
-  else if (sensorName == "rfid") return "R";
-  else if (sensorName == "temperature") return "T";
+  if (sensorName == "ac") return "Ax"+MeshOS::getIntraDataSplitter()+"Ay"+MeshOS::getIntraDataSplitter()+"Az";
+  else if (sensorName == "gy") return  "Gx"+MeshOS::getIntraDataSplitter()+"Gy"+MeshOS::getIntraDataSplitter()+"Gz";
+  else if (sensorName == "hu") return "H";
+  else if (sensorName == "li") return "L";
+  else if (sensorName == "rf") return "R";
+  else if (sensorName == "te") return "T";
   else return "-";
 }
 
-String MeshSensorCtrl::_floatToStringConversion(float tempVar) {
+// /* * * * * * * * * * * * * * * * * * * * * * * *
+//   UTIL: Given a set of floats conver to a string
+//  * * * * * * * * * * * * * * * * * * * * * * * */
+
+static String MeshSensorCtrl::stringifyFloatDataset(float* dataset) {
+  uint8_t lengthOfDataSet = sizeof(dataset);
+
+  String valueString = "";
+  String intraDataSplitter = MeshOS::getIntraDataSplitter();
+
+  for (int i = 0; i < lengthOfDataSet; i++) {
+    String buff = "-";
+
+    if (!isnan(dataset[i])) {
+      buff = MeshSensorCtrl::_floatToStringConversion(dataset[i]);
+    }
+
+    valueString += buff;
+    if(i < lengthOfDataSet-1) {
+      valueString += intraDataSplitter;
+    }
+  }
+
+  return valueString;
+}
+
+// /* * * * * * * * * * * * * * * * * * * * * * * *
+//   UTIL: convert the float to the string
+//  * * * * * * * * * * * * * * * * * * * * * * * */
+
+static String MeshSensorCtrl::_floatToStringConversion(float tempVar) {
   char buf[10];
   dtostrf(tempVar, 4, 2, buf);
 

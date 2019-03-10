@@ -23,11 +23,11 @@ class MeshSensorCtrl {
     
     // Util
     static String getSensorLabels(String sensorName);
+    static String stringifyFloatDataset(float* dataset);
 
     // Functions that must be defined
     virtual void initialize();
     virtual String sample();
-    static String _floatToStringConversion(float tempVar);
 
   protected:
     String _SENSOR_NAME;
@@ -39,6 +39,9 @@ class MeshSensorCtrl {
     const static int _STATE_SLEEPING = 0;
     const static int _STATE_AWAKE = 1;
     const static int _STATE_READING = 2;
+
+  private:
+    static String _floatToStringConversion(float tempVar);
 };
 
 #endif
