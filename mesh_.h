@@ -43,15 +43,16 @@ class MeshOS {
     static String getIntraDataSplitter();
 
     // Node Specific
+    void toggleSettingsComms(bool componentSettings=false);
+    void toggleSettingsClock(bool componentSettings=false);
+    void toggleSettingsStorage(bool componentSettings=false);
+    void toggleSettingsSampleTimeTransmission(bool componentSettings=false);
     int getControlState();
     String getDataFormat();
     uint8_t getNodeVersion();
 
     // Communication Methods 
     int getDataFrameSize();
-
-    // Clock Methods
-    String getCurrentTimestamp();
 
   private:
     static uint8_t _CONTROL_VERSION;
@@ -71,19 +72,26 @@ class MeshOS {
     SoftwareSerial _nodeCommsPort;
     MeshSensorCtrl** _sensorRelay;
 
+    // Toggling hardware connected
+    bool _IS_ENABLED_COMMS = true;
+    bool _IS_ENABLED_CLOCK = true;
+    bool _IS_ENABLED_STORAGE = true;
+    bool _IS_ENABLED_SAMPLE_TIME_TRANSMISSION = false;
+
     // Node loop Variables
     int _controlState;
 
-    String _startTimeStamp;
-    String _currentTimeStamp;
+    unsigned long _startTimeStamp;
+    unsigned long _currentTimeStamp;
 
-    unsigned int _timeStartSync;
+    uint8_t _timeStartSync;
     unsigned long _lastSensorRelaySample;
     unsigned long _lastTransmission;
 
     bool _hasStartedSampling;
 
     unsigned long _SAMPLE_DELAY;
+    unsigned long _TRANSMISSION_DELAY;
 
     // Set up functions
     void _initializeClock();
@@ -96,20 +104,22 @@ class MeshOS {
     void _sampleSensorRelay();
 
     // Storage
-    void _addReadingToDataset(String dataTimestamp, String dataReading);
-    void _createSensorRelayDataFiles();
+    void _createSensorRelayDataFiles(int sensorRelayIndex);
     String _getCurrentFilename(int sensorRelayIndex);
-    void _storeSensorTimestamp(int sensorRelayIndex);
-    void _storeSensorReading(int sensorRelayIndex);  
+    void _storeCurrentSensorReading(int sensorRelayIndex);  
 
-    void _openStorageFile(String storageFilename);
-    void _writeToStorageFile(String textToWrite);
     void _closeStorageFile();
+    bool _openStorageFile(int sensorRelayIndex, bool toWrite=false);
     String _readLineFromOpenStorageFile();
+    void _writeToStorageFile(String textToWrite);
 
     // Transmission
     void _receivedIncomingCommunication();
     void _transmitSensorRelayFiles();
+    void _transmitMessage(String currentMessage);
+
+    // Clock
+    uint8_t _calculateReadingTimestamp();
 };
 
 #endif

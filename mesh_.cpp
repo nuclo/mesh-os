@@ -17,10 +17,8 @@
 
 uint8_t MeshOS::_CONTROL_VERSION = 1;
 String MeshOS::_SAMPLE_SPLITTER = "\n";
-String MeshOS::_DATA_CHUNK_SPLITTER = "||";
+String MeshOS::_DATA_CHUNK_SPLITTER = "^";
 String MeshOS::_INTRADATA_SPLITTER = "<>";
-
-#define _TIMESTAMP_FORMAT "YYYY-MM-DDTHH:MM:SS"
 
 #define STATE_INITIALIZING -1
 #define STATE_SLEEPING 0
@@ -34,8 +32,7 @@ String MeshOS::_INTRADATA_SPLITTER = "<>";
 #define _BAUD_RATE 9600
 #define _BAUD_RATE_COMMS 9600
 
-#define MINUTES_BETWEEN_TRANSMISSIONS 5
-#define TRANSMISSION_DELAY 300000 // 5 mins * 60 sec * 1000 milli secs;
+#define MINUTES_BETWEEN_TRANSMISSIONS 60
 #define MAXIMUM_TRANSMISSIONS 1000
 
 /* * * * * * * * * * * * * * * * * * * * * * * *
@@ -57,6 +54,7 @@ MeshOS::MeshOS(
   _BLT_LED_PING_PIN = BLT_LED_PING_PIN;
   _SD_CS_PIN = SD_CS_PIN;
   _SAMPLE_DELAY = SECONDS_BETWEEN_SAMPLES * MILLISECONDS_TO_SECONDS;
+  _TRANSMISSION_DELAY = MINUTES_BETWEEN_TRANSMISSIONS * SECONDS_TO_MINUTES * MILLISECONDS_TO_SECONDS;
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * *
@@ -73,20 +71,21 @@ void MeshOS::initialize(MeshSensorCtrl** sensorRelay) {
   _controlState = STATE_INITIALIZING;
 
   // Initialize connected hardware
-  _initializeClock();
-  _initializeStorage();
-  _initializeWirelessCommunication();
+  if (_IS_ENABLED_CLOCK) { _initializeClock(); };
+  if (_IS_ENABLED_COMMS) { _initializeWirelessCommunication(); };
+  if (_IS_ENABLED_STORAGE) { _initializeStorage(); };
 
   // Initialize all the sensors
   String currentSensorName;
   String currentFilename;
-  for (int sensorRelayIndex = 0; sensorRelayIndex < sizeof _sensorRelay/sizeof _sensorRelay[0]; sensorRelayIndex++) {
+  for (int sensorRelayIndex = 0; sensorRelayIndex < sizeof(_sensorRelay); sensorRelayIndex++) {
     _sensorRelay[sensorRelayIndex]->initialize();
+    _createSensorRelayDataFiles(sensorRelayIndex);
   }
 
   // Start sample times
-  _startTimeStamp = getCurrentTimestamp();
-  _currentTimeStamp = getCurrentTimestamp();
+  _startTimeStamp = now();
+  _currentTimeStamp = _startTimeStamp;
 
   _lastSensorRelaySample = 0;
   _lastTransmission = 0;
@@ -100,7 +99,8 @@ void MeshOS::initialize(MeshSensorCtrl** sensorRelay) {
  * * * * * * * * * * * * * * * * * * * * * * * */
 
 void MeshOS::_initializeClock() {
-  // setTime(7, 22, 50, 11, 2, 2019);
+  // Strictly for setting time
+  // setTime(8, 51, 25, 18, 2, 2019);
   // RTC.set(now());
 
   setSyncProvider(RTC.get);
@@ -132,7 +132,7 @@ void MeshOS::_initializeWirelessCommunication() {
  * * * * * * * * * * * * * * * * * * * * * * * */
 
 void MeshOS::loop() {
-  _currentTimeStamp = getCurrentTimestamp();
+  _currentTimeStamp = now();
   unsigned long _millisecondsDelta = millis() - _timeStartSync;
 
   if (!_hasStartedSampling) {
@@ -145,27 +145,31 @@ void MeshOS::loop() {
 
       _startTimeStamp = _currentTimeStamp;
       _timeStartSync = millis();
-
-      // Create new files for all the sensors
-      _createSensorRelayDataFiles();
     }
 
   } else {
     // Sample the sensors at a set frequency
     if ((_millisecondsDelta - _lastSensorRelaySample) >= _SAMPLE_DELAY) {
+        Serial.println('.');        
+
       _sampleSensorRelay();
+
+      if(_IS_ENABLED_SAMPLE_TIME_TRANSMISSION) {
+
+      }
+
       _lastSensorRelaySample = _millisecondsDelta;
     }
 
     // Send data at a set freqency
-    if ((_millisecondsDelta - _lastTransmission) >= TRANSMISSION_DELAY) {
-      // Stop sampling when in transmission mode
-      _hasStartedSampling = false;
+    // if ((_millisecondsDelta - _lastTransmission) >= _TRANSMISSION_DELAY) {
+    //   // Stop sampling when in transmission mode
+    //   _hasStartedSampling = false;
 
-      // Begin transmission
-      _transmitSensorRelayFiles();
-      _lastTransmission = _millisecondsDelta;
-    }
+    //   // Begin transmission
+    //   _transmitSensorRelayFiles();
+    //   _lastTransmission = _millisecondsDelta;
+    // }
   }
 }
 
@@ -186,6 +190,38 @@ static String MeshOS::getIntraDataSplitter() {
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * *
+  NODE SPECIFIC: Toggle comms
+ * * * * * * * * * * * * * * * * * * * * * * * */
+
+void MeshOS::toggleSettingsComms(bool componentSettings) {
+  _IS_ENABLED_COMMS = componentSettings;
+}
+
+/* * * * * * * * * * * * * * * * * * * * * * * *
+  NODE SPECIFIC: Toggle clock
+ * * * * * * * * * * * * * * * * * * * * * * * */
+
+void MeshOS::toggleSettingsClock(bool componentSettings) {
+  _IS_ENABLED_CLOCK = componentSettings;
+}
+
+/* * * * * * * * * * * * * * * * * * * * * * * *
+  NODE SPECIFIC: Toggle storage
+ * * * * * * * * * * * * * * * * * * * * * * * */
+
+void MeshOS::toggleSettingsStorage(bool componentSettings) {
+  _IS_ENABLED_STORAGE = componentSettings;
+}
+
+/* * * * * * * * * * * * * * * * * * * * * * * *
+  NODE SPECIFIC: Toggle sample transmission
+ * * * * * * * * * * * * * * * * * * * * * * * */
+
+void MeshOS::toggleSettingsSampleTimeTransmission(bool componentSettings) {
+  _IS_ENABLED_SAMPLE_TIME_TRANSMISSION = componentSettings;
+}
+
+/* * * * * * * * * * * * * * * * * * * * * * * *
   NODE SPECIFIC: Read state
  * * * * * * * * * * * * * * * * * * * * * * * */
 
@@ -198,7 +234,7 @@ int MeshOS::getControlState() {
  * * * * * * * * * * * * * * * * * * * * * * * */
 
 void MeshOS::_awake() {
-  // Serial.println('+');
+  Serial.println('<');
   _controlState = STATE_AWAKE;
 
   // TODO: Wake up all sensors and periphery connections
@@ -218,7 +254,7 @@ void MeshOS::_sleep() {
 
   // TODO: Put to sleep all periphery connections
 
-  // Serial.println('-');
+  Serial.println('>');
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * *
@@ -228,10 +264,16 @@ void MeshOS::_sleep() {
 void MeshOS::_sampleSensorRelay() {
   _awake();
 
-  for (int sensorRelayIndex = 0; sensorRelayIndex < sizeof _sensorRelay/sizeof _sensorRelay[0]; sensorRelayIndex++) {
+  for (int sensorRelayIndex = 0; sensorRelayIndex < sizeof(_sensorRelay); sensorRelayIndex++) {
     // Saving separately because memory issues timestamps getting written
-    _storeSensorTimestamp(sensorRelayIndex);
-    _storeSensorReading(sensorRelayIndex);
+    if (_IS_ENABLED_STORAGE) {
+      _storeCurrentSensorReading(sensorRelayIndex);
+    }
+
+    if (_IS_ENABLED_SAMPLE_TIME_TRANSMISSION) {
+      String currentSensorReading = _sensorRelay[sensorRelayIndex]->sample();
+      _transmitMessage(currentSensorReading);
+    }
   }
 
   _sleep();
@@ -244,7 +286,8 @@ void MeshOS::_sampleSensorRelay() {
 String MeshOS::_getCurrentFilename(int sensorRelayIndex) {
   // Create file and save the format for the data storing
   String sensorName = _sensorRelay[sensorRelayIndex]->getSensorName();
-  String filename = _NODE_NAME + '-' + sensorName + '-' + _startTimeStamp + ".000Z.txt";
+  String filename = sensorName + ".txt";
+
   return filename;
 }
 
@@ -252,59 +295,70 @@ String MeshOS::_getCurrentFilename(int sensorRelayIndex) {
   STORAGE: Creating the files
  * * * * * * * * * * * * * * * * * * * * * * * */
 
-void MeshOS::_createSensorRelayDataFiles() {
-  // Create file and save the format for the data storing
-  String filename;
-
+void MeshOS::_createSensorRelayDataFiles(int sensorRelayIndex) {
   // Create new files for all the sensors 
-  for (int sensorRelayIndex = 0; sensorRelayIndex < sizeof _sensorRelay/sizeof _sensorRelay[0]; sensorRelayIndex++) {
-    filename = _getCurrentFilename(sensorRelayIndex);
-    _currentStorageFile = SD.open(filename, FILE_WRITE);
+  String filename = _getCurrentFilename(sensorRelayIndex);
+  _currentStorageFile = SD.open(filename, FILE_WRITE);
 
+  if (_currentStorageFile) {
+    Serial.println('|');
     _closeStorageFile();
+  } else {
+    Serial.println('_');
   }
-}
-
-/* * * * * * * * * * * * * * * * * * * * * * * *
-  STORAGE: Store Timestamps
- * * * * * * * * * * * * * * * * * * * * * * * */
-
-void MeshOS::_storeSensorTimestamp(int sensorRelayIndex) {
-  unsigned int millisecondDelta = (millis() - _timeStartSync) % 1000;
-
-  // Adding leading zeros, organized to preserve global memory space
-  String timestampPadding = ".";
-  if (millisecondDelta < 100) timestampPadding += "0";
-  if (millisecondDelta < 10) timestampPadding += "0";
-
-  String currentReadingTimestamp = _currentTimeStamp + timestampPadding + String(millisecondDelta) + "Z";
-
-  _openStorageFile(_getCurrentFilename(sensorRelayIndex));
-  _writeToStorageFile(currentReadingTimestamp);
-  _closeStorageFile();
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * *
   STORAGE: Add readings
  * * * * * * * * * * * * * * * * * * * * * * * */
 
-void MeshOS::_storeSensorReading(int sensorRelayIndex) {
-  String currentSensorReading = _sensorRelay[sensorRelayIndex]->sample();
+void MeshOS::_storeCurrentSensorReading(int sensorRelayIndex) {
+  // Calculate the current timestamps with milliseconds
+  unsigned long currentReadingTimestamp = _currentTimeStamp;
+  String currentSensorReading = String(currentReadingTimestamp);
 
-  _openStorageFile(_getCurrentFilename(sensorRelayIndex));
-  _writeToStorageFile(currentSensorReading);
-  _closeStorageFile();
+  uint8_t millisecondsAdded = (millis() - _timeStartSync) % 1000;
+  if (millisecondsAdded < 10) currentSensorReading += "00";
+  else if (millisecondsAdded < 100) currentSensorReading += "0";
+  currentSensorReading += String(millisecondsAdded);
+
+  currentSensorReading += _DATA_CHUNK_SPLITTER;
+  currentSensorReading += _sensorRelay[sensorRelayIndex]->sample();
+
+  // Serial.println(currentSensorReading);
+
+  bool openResult = _openStorageFile(sensorRelayIndex, true);
+  if (openResult) {
+    _writeToStorageFile(currentSensorReading);
+    _closeStorageFile();
+  }
 }
+
 /* * * * * * * * * * * * * * * * * * * * * * * *
-  FILES: Open a file
+  STORAGE: Open a file
  * * * * * * * * * * * * * * * * * * * * * * * */
 
-void MeshOS::_openStorageFile(String storageFilename) {
-  _currentStorageFile = SD.open(storageFilename);
+bool MeshOS::_openStorageFile(int sensorRelayIndex, bool toWrite) {
+  String currentlyOpenFileName = _getCurrentFilename(sensorRelayIndex);
+
+  if (toWrite) {
+    _currentStorageFile = SD.open(currentlyOpenFileName, FILE_WRITE);
+  } else {
+    _currentStorageFile = SD.open(currentlyOpenFileName);
+  }
+  
+
+  if (_currentStorageFile) {
+    Serial.println('{');
+    return true;
+  } else {
+    Serial.println("x");
+    return false;
+  }
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * *
-  FILES: Write data to an opened file
+  STORAGE: Write data to an opened file
  * * * * * * * * * * * * * * * * * * * * * * * */
 
 void MeshOS::_writeToStorageFile(String textToWrite) {
@@ -314,17 +368,18 @@ void MeshOS::_writeToStorageFile(String textToWrite) {
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * *
-  FILES: Close an opened file
+  STORAGE: Close an opened file
  * * * * * * * * * * * * * * * * * * * * * * * */
 
 void MeshOS::_closeStorageFile() {
   if (_currentStorageFile) {
     _currentStorageFile.close();
+    Serial.println('}');
   }
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * *
-  FILES: Close an opened file
+  STORAGE: Close an opened file
  * * * * * * * * * * * * * * * * * * * * * * * */
 
 String MeshOS::_readLineFromOpenStorageFile() {
@@ -348,7 +403,9 @@ void MeshOS::_receivedIncomingCommunication() {
   Serial.println('~');
 
   if (_nodeCommsPort.available()) {
-    // Serial.write(_nodeCommsPort.read());
+    if (_nodeCommsPort.read() == "download") {
+      _transmitSensorRelayFiles();
+    }
   }
 }
 
@@ -360,15 +417,11 @@ void MeshOS::_transmitSensorRelayFiles() {
   // Start light
   digitalWrite(_BLT_LED_PING_PIN, HIGH);
 
-  // Open the file to save to
-  String storageFilename;
-
-  for (int sensorRelayIndex = 0; sensorRelayIndex < sizeof _sensorRelay/sizeof _sensorRelay[0]; sensorRelayIndex++) {
-    storageFilename = _getCurrentFilename(sensorRelayIndex);
-    _openStorageFile(storageFilename);
+  for (int sensorRelayIndex = 0; sensorRelayIndex < sizeof(_sensorRelay); sensorRelayIndex++) {
+    _openStorageFile(sensorRelayIndex);
 
     // Loop through each line and transmit to gateway
-    String currentLine = ".";
+    String currentLine = "$";
     uint8_t lineIndex = 0;
 
     // Check the length of the line to see if we are at the end of the file or max transmissions
@@ -387,18 +440,10 @@ void MeshOS::_transmitSensorRelayFiles() {
   digitalWrite(_BLT_LED_PING_PIN, LOW);
 }
 
-
 /* * * * * * * * * * * * * * * * * * * * * * * *
-  CLOCK: Request the time
+  TRANSMISSION: Send a message
  * * * * * * * * * * * * * * * * * * * * * * * */
 
-String MeshOS::getCurrentTimestamp() {
-  // Format the time and date and insert into the temporary buffer.
-  char buf[25];
-  snprintf(buf, sizeof(buf), "%04d-%02d-%02dT%02d:%02d:%02d",
-      year(), month(), day(),
-      hour(), minute(), second());
-
-  // Print the formatted string to serial so we can see the time.
-  return buf;
+void MeshOS::_transmitMessage(String currentMessage) {
+  _nodeCommsPort.println(currentMessage);
 }
