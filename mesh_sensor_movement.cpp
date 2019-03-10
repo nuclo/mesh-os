@@ -56,12 +56,12 @@ MeshSensorMovement::MeshSensorMovement(bool IS_AD0_PIN_HIGH) : MeshSensorCtrl() 
     _IC2_ADDR = IC2_LOW_ADDR;
   }
   
-  MeshSensorCtrl::_SENSOR_NAME = "MPU6050";
+  MeshSensorCtrl::_SENSOR_NAME = "M1";
   MeshSensorCtrl::_SENSOR_VERSION = 1;
 
-  String accelerometerLabel = MeshSensorCtrl::getSensorLabels("accelerometer");
+  String accelerometerLabel = MeshSensorCtrl::getSensorLabels("ac");
   String intraDataSplitter = MeshOS::getIntraDataSplitter();
-  String gyroscope = MeshSensorCtrl::getSensorLabels("gyroscope");
+  String gyroscope = MeshSensorCtrl::getSensorLabels("gy");
   MeshSensorCtrl::_DATA_FRAME_FORMAT = "" + accelerometerLabel + intraDataSplitter + gyroscope;
 }
 
@@ -87,16 +87,7 @@ String MeshSensorMovement::sample() {
   _recordGyroRegisters();
 
   float dataset[6] = { rotX, rotY, rotZ, gForceX, gForceY, gForceZ };
-
-  String valueString = "";
-  String intraDataSplitter = MeshOS::getIntraDataSplitter();
-
-  for (int i = 0; i < 6; i++) {
-    String buff = MeshSensorCtrl::_floatToStringConversion(dataset[i]);
-    valueString += buff;
-    if(i < 5)
-      valueString += intraDataSplitter;
-  }
+  String valueString = MeshSensorCtrl::stringifyFloatDataset(dataset);
 
   return valueString;
 }
